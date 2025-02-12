@@ -32,7 +32,7 @@ async function fetchDuneData(duneClient: DuneClient, limit: number, offset: numb
       {
         name: 'daysSinceLastAllocate', // Parameter name as defined in the Dune query
         type: ParameterType.NUMBER, // Type of the parameter (e.g., number, string, etc.)
-        value: "180", // Value to pass to the parameter
+        value: "270", // Value to pass to the parameter
       },
     ],
   });
@@ -62,13 +62,13 @@ async function createAndProposeSafeTransaction(
   const signature = await protocolKitOwner1.signHash(safeTxHash);
 
   // Propose the transaction to the Safe Transaction Service
-  // await apiKit.proposeTransaction({
-  //   safeAddress: SAFE_ADDRESS,
-  //   safeTransactionData: safeTransaction.data,
-  //   safeTxHash,
-  //   senderAddress: OWNER_1_ADDRESS,
-  //   senderSignature: signature.data,
-  // });
+  await apiKit.proposeTransaction({
+    safeAddress: SAFE_ADDRESS,
+    safeTransactionData: safeTransaction.data,
+    safeTxHash,
+    senderAddress: OWNER_1_ADDRESS,
+    senderSignature: signature.data,
+  });
 
   console.log(`\nProposed Safe transaction for chunk. SafeTxHash: ${safeTxHash}`);
 }
