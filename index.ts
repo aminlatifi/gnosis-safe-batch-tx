@@ -2,7 +2,7 @@ import SafeApiKit from "@safe-global/api-kit";
 import Safe from "@safe-global/protocol-kit";
 import { MetaTransactionData, OperationType } from "@safe-global/types-kit";
 import { ethers } from "ethers";
-import { DuneClient } from "@duneanalytics/client-sdk";
+import { DuneClient, ParameterType } from "@duneanalytics/client-sdk";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -26,7 +26,16 @@ const TOKEN_DISTRO_CONTRACT = "0xc0dbDcA66a0636236fAbe1B3C16B1bD4C84bB1E1";
 const DUNE_QUERY_ID = 3799716;
 
 async function fetchDuneData(duneClient: DuneClient, limit: number, offset: number) {
-  const queryResult = await duneClient.getLatestResult({ queryId: DUNE_QUERY_ID });
+  const queryResult = await duneClient.getLatestResult({
+    queryId: DUNE_QUERY_ID,
+    query_parameters: [
+      {
+        name: 'daysSinceLastAllocate', // Parameter name as defined in the Dune query
+        type: ParameterType.NUMBER, // Type of the parameter (e.g., number, string, etc.)
+        value: "180", // Value to pass to the parameter
+      },
+    ],
+  });
   if (!queryResult.result || !queryResult.result.rows) {
     throw new Error("No data returned from Dune query.");
   }
@@ -53,13 +62,13 @@ async function createAndProposeSafeTransaction(
   const signature = await protocolKitOwner1.signHash(safeTxHash);
 
   // Propose the transaction to the Safe Transaction Service
-  await apiKit.proposeTransaction({
-    safeAddress: SAFE_ADDRESS,
-    safeTransactionData: safeTransaction.data,
-    safeTxHash,
-    senderAddress: OWNER_1_ADDRESS,
-    senderSignature: signature.data,
-  });
+  // await apiKit.proposeTransaction({
+  //   safeAddress: SAFE_ADDRESS,
+  //   safeTransactionData: safeTransaction.data,
+  //   safeTxHash,
+  //   senderAddress: OWNER_1_ADDRESS,
+  //   senderSignature: signature.data,
+  // });
 
   console.log(`\nProposed Safe transaction for chunk. SafeTxHash: ${safeTxHash}`);
 }
