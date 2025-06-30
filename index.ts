@@ -1,20 +1,23 @@
-import SafeApiKit from "@safe-global/api-kit";
 import Safe from "@safe-global/protocol-kit";
+import SafeApiKit from "@safe-global/api-kit";
 import { MetaTransactionData, OperationType } from "@safe-global/types-kit";
 import { ethers } from "ethers";
 import { DuneClient, ParameterType } from "@duneanalytics/client-sdk";
 import * as dotenv from "dotenv";
+import { fetchDuneData } from "./helper/dune";
+import { createAndProposeSafeTransaction } from "./helper/safe";
 
 dotenv.config();
 
 /**
  * Environment variables read from the .env file
  */
-const OWNER_1_PRIVATE_KEY = process.env.OWNER_1_PRIVATE_KEY as string;
-const OWNER_1_ADDRESS = process.env.OWNER_1_ADDRESS as string;
 const SAFE_ADDRESS = process.env.SAFE_ADDRESS as string;
+const SAFE_API_KEY = process.env.SAFE_API_KEY as string;
+const DELEGATE_PRIVATE_KEY = process.env.DELEGATE_PRIVATE_KEY as string;
 const RPC_URL = process.env.RPC_URL as string;
 const DUNE_API_KEY = process.env.DUNE_API_KEY as string;
+const RECIPIENT_ADDRESS = process.env.RECIPIENT_ADDRESS as string;
 
 // The Gnosis chain (xDAI) has a chain ID of 100
 const CHAIN_ID = BigInt(100);
@@ -23,75 +26,28 @@ const CHAIN_ID = BigInt(100);
 const TOKEN_DISTRO_CONTRACT = "0xc0dbDcA66a0636236fAbe1B3C16B1bD4C84bB1E1";
 
 // Query ID from Dune Analytics
-const DUNE_QUERY_ID = 3799716;
-
-async function fetchDuneData(duneClient: DuneClient, limit: number, offset: number) {
-  const queryResult = await duneClient.getLatestResult({
-    queryId: DUNE_QUERY_ID,
-    query_parameters: [
-      {
-        name: 'daysSinceLastAllocate', // Parameter name as defined in the Dune query
-        type: ParameterType.NUMBER, // Type of the parameter (e.g., number, string, etc.)
-        value: "270", // Value to pass to the parameter
-      },
-    ],
-  });
-  if (!queryResult.result || !queryResult.result.rows) {
-    throw new Error("No data returned from Dune query.");
-  }
-
-  // Get rows in the specified range
-  const rows = queryResult.result.rows.slice(offset, offset + limit);
-  return rows;
-}
-
-async function createAndProposeSafeTransaction(
-  protocolKitOwner1: Safe,
-  apiKit: SafeApiKit,
-  transactions: MetaTransactionData[]
-) {
-  // Create a transaction batch for the chunk
-  const safeTransaction = await protocolKitOwner1.createTransaction({
-    transactions,
-  });
-
-  // Calculate the Safe transaction hash
-  const safeTxHash = await protocolKitOwner1.getTransactionHash(safeTransaction);
-
-  // Sign the transaction hash
-  const signature = await protocolKitOwner1.signHash(safeTxHash);
-
-  // Propose the transaction to the Safe Transaction Service
-  await apiKit.proposeTransaction({
-    safeAddress: SAFE_ADDRESS,
-    safeTransactionData: safeTransaction.data,
-    safeTxHash,
-    senderAddress: OWNER_1_ADDRESS,
-    senderSignature: signature.data,
-  });
-
-  console.log(`\nProposed Safe transaction for chunk. SafeTxHash: ${safeTxHash}`);
-}
-
 async function main() {
   // Initialize a provider and signer using ethers
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const owner1Signer = new ethers.Wallet(OWNER_1_PRIVATE_KEY, provider);
+  // const provider = new ethers.JsonRpcProvider(RPC_URL);
+  // const owner1Signer = new ethers.Wallet(OWNER_1_PRIVATE_KEY, provider);
 
   // Initialize SafeApiKit with proper configuration
   const apiKit = new SafeApiKit({
     chainId: CHAIN_ID,
+    apiKey: SAFE_API_KEY,
   });
 
   // Initialize the Protocol Kit
-  const protocolKitOwner1 = await Safe.init({
+  const safe = await Safe.init({
     provider: RPC_URL,
-    signer: OWNER_1_PRIVATE_KEY,
+    signer: DELEGATE_PRIVATE_KEY,
     safeAddress: SAFE_ADDRESS,
   });
 
   // The contract ABI for "transferAllocation(address prevRecipient, address newRecipient)"
-  const abi = ["function transferAllocation(address prevRecipient, address newRecipient)"];
+  const abi = [
+    "function transferAllocation(address prevRecipient, address newRecipient)",
+  ];
   const iface = new ethers.Interface(abi);
 
   // Initialize the Dune client
@@ -114,7 +70,7 @@ async function main() {
       // Encode the call data
       const data = iface.encodeFunctionData("transferAllocation", [
         prevRecipient,
-        TOKEN_DISTRO_CONTRACT,
+        RECIPIENT_ADDRESS,
       ]);
 
       // Construct the Safe transaction
@@ -127,10 +83,14 @@ async function main() {
     });
 
     // Create and propose a Safe transaction for the current chunk
-    await createAndProposeSafeTransaction(protocolKitOwner1, apiKit, transactions);
+    await createAndProposeSafeTransaction(safe, apiKit, transactions);
 
     // Increment offset for the next batch
-    offset += limit;
+    offset += rows.length;
+
+    if (rows.length < limit) {
+      break;
+    }
   }
 
   console.log("All chunks processed and proposed as separate transactions.");
